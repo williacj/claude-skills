@@ -1,0 +1,19 @@
+# Claude Assistant Rules for this Repository
+
+## File Organization
+- ALL documentation files (.md except README.md) go in docs/ folder
+- NEVER create documentation in root directory
+- Keep root directory clean and organized
+
+## Before Creating Files
+1. Check if it's documentation → use docs/ folder
+2. Verify path includes docs/ for any .md files except README.md
+3. Maintain proper repository organization
+
+## Repository Structure
+claude-skills/
+├── README.md (ONLY .md file allowed in root)
+├── docs/ (ALL other documentation)
+├── skills/ (skill content)
+├── scripts/ (automation)
+└── .github/ (workflows)
