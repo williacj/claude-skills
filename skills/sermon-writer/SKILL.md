@@ -113,7 +113,7 @@ Use these methods to make abstract truth concrete:
 ### Common Pitfalls to Avoid
 
 - **Forced application**: Don't manufacture contemporary relevance—let it emerge naturally from the text
-- **Moralizing**: Avoid reducing Scripture to behavior modification; emphasize God's character and grace
+- **Moralizing**: Avoid reducing Scripture to behavior modification; emphasize God's character and grace, especially God working through us from the inside out.
 - **Proof-texting**: Build arguments from careful exegesis, not isolated verses
 - **Sentimentality**: Maintain emotional authenticity without manipulation
 - **Exhaustive coverage**: Better to explore one angle deeply than cover everything superficially
