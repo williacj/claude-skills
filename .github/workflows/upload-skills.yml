@@ -1,0 +1,165 @@
+name: Upload Skills to Anthropic
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/**'
+      - 'skills-config.json'
+      - '.github/workflows/upload-skills.yml'
+
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: 'Skill to upload (skill name from config or "all")'
+        required: false
+        default: 'all'
+        type: string
+
+jobs:
+  detect-changes:
+    name: Detect Changed Skills
+    runs-on: ubuntu-latest
+    outputs:
+      changed_skills: ${{ steps.detect.outputs.changed_skills }}
+      all_skills: ${{ steps.detect.outputs.all_skills }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Detect changed skills
+        id: detect
+        run: |
+          # Load config and detect changed skills
+          python3 << 'EOF'
+          import json
+          import subprocess
+          import os
+
+          # Load skills config
+          with open('skills-config.json', 'r') as f:
+              config = json.load(f)
+
+          changed_skills = []
+          all_skills = list(config['skills'].keys())
+
+          # Check if workflow_dispatch with specific skill
+          if "${{ github.event_name }}" == "workflow_dispatch":
+              skill_input = "${{ github.event.inputs.skill }}"
+              if skill_input == "all":
+                  changed_skills = all_skills
+              elif skill_input in all_skills:
+                  changed_skills = [skill_input]
+              else:
+                  print(f"❌ Invalid skill name: {skill_input}")
+                  print(f"Available skills: {', '.join(all_skills)}")
+                  exit(1)
+          else:
+              # Auto trigger - detect changed files
+              result = subprocess.run(
+                  ['git', 'diff', '--name-only', 'HEAD~1', 'HEAD'],
+                  capture_output=True,
+                  text=True
+              )
+              changed_files = result.stdout.strip().split('\n')
+
+              # Check each skill's path
+              for skill_name, skill_config in config['skills'].items():
+                  skill_path = skill_config['path']
+                  if any(f.startswith(skill_path) for f in changed_files):
+                      changed_skills.append(skill_name)
+
+              # Also trigger all if config changed
+              if 'skills-config.json' in changed_files:
+                  print("⚠️  Config changed - uploading all skills")
+                  changed_skills = all_skills
+
+          # Output for GitHub Actions
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"changed_skills={json.dumps(changed_skills)}\n")
+              f.write(f"all_skills={json.dumps(all_skills)}\n")
+
+          print(f"📦 Changed skills: {changed_skills}")
+          EOF
+
+      - name: Summary
+        run: |
+          echo "## 🔍 Change Detection Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Changed Skills:** \`${{ steps.detect.outputs.changed_skills }}\`" >> $GITHUB_STEP_SUMMARY
+
+  upload-skills:
+    name: Upload Skills
+    needs: detect-changes
+    if: needs.detect-changes.outputs.changed_skills != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        skill: ${{ fromJson(needs.detect-changes.outputs.changed_skills) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic python-dotenv
+
+      - name: Upload ${{ matrix.skill }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          echo "🚀 Uploading skill: ${{ matrix.skill }}"
+          python scripts/upload-skill.py --skill-name ${{ matrix.skill }}
+
+      - name: Add to summary
+        if: success()
+        run: |
+          echo "✅ **${{ matrix.skill }}** uploaded successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Add failure to summary
+        if: failure()
+        run: |
+          echo "❌ **${{ matrix.skill }}** upload failed" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Upload Summary
+    needs: [detect-changes, upload-skills]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create summary
+        run: |
+          echo "# 🎯 Skills Upload Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.upload-skills.result }}" == "success" ]; then
+            echo "✅ All skills uploaded successfully!" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upload-skills.result }}" == "failure" ]; then
+            echo "❌ Some skills failed to upload. Check job logs above." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.detect-changes.outputs.changed_skills }}" == "[]" ]; then
+            echo "⏭️  No skills changed - nothing to upload" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️  Upload status: ${{ needs.upload-skills.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📚 Skills Tracked" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+          echo '${{ needs.detect-changes.outputs.all_skills }}' >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

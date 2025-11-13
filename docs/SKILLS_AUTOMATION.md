@@ -1,6 +1,14 @@
 # Skills Deployment Automation
 
-This repository automatically prepares Claude skills for deployment when changes are made. Until the Anthropic Skills API supports programmatic uploads, the system creates deployment packages for manual upload to Claude Console.
+> **⚠️ SUPERSEDED:** This document describes the legacy manual workflow. The repository now uses **fully automated CI/CD pipeline** via Anthropic Skills API.
+>
+> **See:** [CI-CD-PIPELINE.md](./CI-CD-PIPELINE.md) for current automation documentation.
+
+---
+
+## Legacy Documentation (For Reference)
+
+This repository previously prepared Claude skills for manual deployment. This workflow has been replaced by automated upload via the Anthropic Skills API.
 
 ## 🚀 How It Works
 
