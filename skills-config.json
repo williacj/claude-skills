@@ -1,0 +1,29 @@
+{
+  "skills": {
+    "grammar": {
+      "skill_id": "skill_01LEoRLHpcopdFfXjv9gj9hj",
+      "display_title": "Grammar and Proofreading",
+      "path": "skills/grammar"
+    },
+    "sermon-writer": {
+      "skill_id": "skill_017hvH95CWyhykzXbG542B3B",
+      "display_title": "Sermon Writer",
+      "path": "skills/sermon-writer"
+    },
+    "biblical-accuracy": {
+      "skill_id": null,
+      "display_title": "Biblical Accuracy Checker",
+      "path": "skills/biblical accuracy skill"
+    },
+    "critical-biblical-listener": {
+      "skill_id": null,
+      "display_title": "Critical Biblical Listener",
+      "path": "skills/critical-biblical-listener"
+    }
+  },
+  "metadata": {
+    "version": "1.0.0",
+    "description": "Configuration for Claude Skills CI/CD pipeline",
+    "last_updated": "2025-11-13"
+  }
+}
