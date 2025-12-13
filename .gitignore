@@ -39,3 +39,6 @@ wheels/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Build outputs
+deployments/

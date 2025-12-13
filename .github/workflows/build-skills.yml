@@ -1,0 +1,249 @@
+name: Build Skills Packages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'skills/**'
+      - 'skills-config.json'
+      - '.github/workflows/build-skills.yml'
+      - 'scripts/prepare-skill.py'
+      - 'scripts/validate-skill.py'
+
+  workflow_dispatch:
+    inputs:
+      skill:
+        description: 'Skill to build (skill name from config or "all")'
+        required: false
+        default: 'all'
+        type: string
+
+jobs:
+  validate:
+    name: Validate Skills
+    runs-on: ubuntu-latest
+    outputs:
+      validation_passed: ${{ steps.validate.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate all skills
+        id: validate
+        run: |
+          echo "## 🔍 Skill Validation" >> $GITHUB_STEP_SUMMARY
+          python3 scripts/validate-skill.py --all --verbose > validation.log 2>&1 || true
+          cat validation.log
+          cat validation.log >> $GITHUB_STEP_SUMMARY
+
+          # Check if validation passed
+          if python3 scripts/validate-skill.py --all; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  detect-changes:
+    name: Detect Changed Skills
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      changed_skills: ${{ steps.detect.outputs.changed_skills }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-$(git rev-parse --short HEAD)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Detect changed skills
+        id: detect
+        run: |
+          python3 << 'EOF'
+          import json
+          import subprocess
+          import os
+
+          # Load skills config
+          with open('skills-config.json', 'r') as f:
+              config = json.load(f)
+
+          changed_skills = []
+          all_skills = list(config['skills'].keys())
+
+          # Check if workflow_dispatch with specific skill
+          if "${{ github.event_name }}" == "workflow_dispatch":
+              skill_input = "${{ github.event.inputs.skill }}"
+              if skill_input == "all":
+                  changed_skills = all_skills
+              elif skill_input in all_skills:
+                  changed_skills = [skill_input]
+              else:
+                  print(f"❌ Invalid skill name: {skill_input}")
+                  print(f"Available skills: {', '.join(all_skills)}")
+                  exit(1)
+          else:
+              # Auto trigger - detect changed files
+              result = subprocess.run(
+                  ['git', 'diff', '--name-only', 'HEAD~1', 'HEAD'],
+                  capture_output=True,
+                  text=True
+              )
+              changed_files = result.stdout.strip().split('\n')
+
+              # Check each skill's path
+              for skill_name, skill_config in config['skills'].items():
+                  skill_path = skill_config['path']
+                  if any(f.startswith(skill_path) for f in changed_files):
+                      changed_skills.append(skill_name)
+
+              # Also trigger all if config or build scripts changed
+              trigger_all_files = [
+                  'skills-config.json',
+                  '.github/workflows/build-skills.yml',
+                  'scripts/prepare-skill.py',
+                  'scripts/validate-skill.py'
+              ]
+              if any(f in changed_files for f in trigger_all_files):
+                  print("⚠️  Build infrastructure changed - building all skills")
+                  changed_skills = all_skills
+
+          # Remove duplicates while preserving order
+          changed_skills = list(dict.fromkeys(changed_skills))
+
+          # Output for GitHub Actions
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f"changed_skills={json.dumps(changed_skills)}\n")
+
+          print(f"📦 Changed skills: {changed_skills}")
+          EOF
+
+      - name: Summary
+        run: |
+          echo "## 🔍 Change Detection Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Changed Skills:** \`${{ steps.detect.outputs.changed_skills }}\`" >> $GITHUB_STEP_SUMMARY
+
+  build-skills:
+    name: Build ${{ matrix.skill }}
+    needs: [validate, detect-changes]
+    if: needs.detect-changes.outputs.changed_skills != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        skill: ${{ fromJson(needs.detect-changes.outputs.changed_skills) }}
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install anthropic python-dotenv
+
+      - name: Build ${{ matrix.skill }} package
+        run: |
+          VERSION="${{ needs.detect-changes.outputs.version }}"
+          echo "📦 Building skill: ${{ matrix.skill }} (version: $VERSION)"
+
+          python3 scripts/prepare-skill.py \
+            --skill-name ${{ matrix.skill }} \
+            --version $VERSION \
+            --output-dir deployments
+
+      - name: Upload ${{ matrix.skill }} artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.skill }}-${{ needs.detect-changes.outputs.version }}
+          path: deployments/*
+          retention-days: 90
+
+      - name: Add to summary
+        if: success()
+        run: |
+          VERSION="${{ needs.detect-changes.outputs.version }}"
+          echo "✅ **${{ matrix.skill }}** built successfully (version: $VERSION)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Add failure to summary
+        if: failure()
+        run: |
+          echo "❌ **${{ matrix.skill }}** build failed" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: Build Summary
+    needs: [validate, detect-changes, build-skills]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create summary
+        run: |
+          echo "# 🎯 Skills Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ needs.detect-changes.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ needs.validate.outputs.validation_passed }}" != "true" ]; then
+            echo "❌ Validation failed - builds cancelled" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.build-skills.result }}" == "success" ]; then
+            echo "✅ All skill packages built successfully!" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.build-skills.result }}" == "failure" ]; then
+            echo "❌ Some skill builds failed. Check job logs above." >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.detect-changes.outputs.changed_skills }}" == "[]" ]; then
+            echo "⏭️  No skills changed - nothing to build" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️  Build status: ${{ needs.build-skills.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "1. Download artifacts from the workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "2. Go to https://console.anthropic.com/skills" >> $GITHUB_STEP_SUMMARY
+          echo "3. Upload new versions for each skill" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Show all skills tracked
+          echo "### 📚 All Skills" >> $GITHUB_STEP_SUMMARY
+          python3 << 'EOF'
+          import json
+          with open('skills-config.json', 'r') as f:
+              config = json.load(f)
+
+          print("| Skill | Skill ID | Status |")
+          print("|-------|----------|--------|")
+          for name, cfg in config['skills'].items():
+              skill_id = cfg.get('skill_id', 'Not configured')
+              status = "✅ Ready" if skill_id and skill_id.startswith('skill_') else "⚠️  Needs ID"
+              print(f"| {name} | `{skill_id}` | {status} |")
+          EOF

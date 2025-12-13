@@ -6,6 +6,10 @@ This script creates a deployment-ready zip file and metadata for manual upload
 to Claude Console until the Skills API supports programmatic uploads.
 
 Usage:
+  # Using skill name from config
+  python scripts/prepare-skill.py --skill-name grammar --version v1.0.0
+
+  # Using explicit skill path and ID (legacy)
   python scripts/prepare-skill.py --skill-path skills/grammar --skill-id skill_01XYZ --version v1.0.0 --output-dir deployments
 """
 
@@ -21,6 +25,25 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 env_path = Path(__file__).parent.parent / '.env'
 load_dotenv(env_path)
+
+def load_skills_config(config_path: Path = None) -> dict:
+    """
+    Load skills configuration from skills-config.json.
+
+    Args:
+        config_path: Optional path to config file. Defaults to skills-config.json in repo root.
+
+    Returns:
+        Dict containing skills configuration
+    """
+    if config_path is None:
+        config_path = Path(__file__).parent.parent / 'skills-config.json'
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Skills config not found: {config_path}")
+
+    with open(config_path, 'r') as f:
+        return json.load(f)
 
 def create_deployment_package(skill_path: Path, skill_id: str, version: str, output_dir: Path):
     """
@@ -100,23 +123,25 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Prepare grammar skill for deployment
-  python scripts/prepare-skill.py --skill-path skills/grammar --skill-id skill_01ABC --version v1.0.0 --output-dir deployments
-  
-  # Prepare sermon-writer skill with git version
-  python scripts/prepare-skill.py --skill-path skills/sermon-writer --skill-id skill_01XYZ --version $(git describe --tags --always) --output-dir deployments
+  # Using skill name from config (recommended)
+  python scripts/prepare-skill.py --skill-name grammar --version v1.0.0
+
+  # Using explicit paths (legacy)
+  python scripts/prepare-skill.py --skill-path skills/grammar --skill-id skill_01ABC --version v1.0.0
         """
     )
-    
+
+    parser.add_argument(
+        '--skill-name',
+        help='Skill name from skills-config.json (e.g., "grammar", "sermon-writer")'
+    )
     parser.add_argument(
         '--skill-path',
-        required=True,
-        help='Path to skill folder (e.g., "skills/grammar" or "skills/sermon-writer")'
+        help='Path to skill folder (legacy - use --skill-name instead)'
     )
     parser.add_argument(
         '--skill-id',
-        required=True,
-        help='Skill ID from Claude Console (e.g., skill_01AbCdEfGh)'
+        help='Skill ID from Claude Console (legacy - use --skill-name instead)'
     )
     parser.add_argument(
         '--version',
@@ -128,32 +153,71 @@ Examples:
         default='deployments',
         help='Output directory for deployment packages (default: deployments)'
     )
-    
+    parser.add_argument(
+        '--config',
+        help='Path to skills-config.json (default: auto-detect in repo root)'
+    )
+
     args = parser.parse_args()
-    
-    # Resolve paths
-    skill_path = Path(args.skill_path)
+
+    # Determine skill path and ID
+    if args.skill_name:
+        # Load from config
+        config_path = Path(args.config) if args.config else None
+        config = load_skills_config(config_path)
+
+        if args.skill_name not in config['skills']:
+            print(f"❌ Error: Skill '{args.skill_name}' not found in config")
+            print(f"   Available skills: {', '.join(config['skills'].keys())}")
+            sys.exit(1)
+
+        skill_config = config['skills'][args.skill_name]
+        skill_path = Path(skill_config['path'])
+        skill_id = skill_config['skill_id']
+
+        if skill_id is None:
+            print(f"⚠️  Warning: Skill '{args.skill_name}' has no skill_id in config")
+            print(f"   You'll need to create this skill in Claude Console first")
+            print(f"   Package will still be created for manual upload")
+            skill_id = f"skill_PENDING_{args.skill_name}"
+
+        print(f"📋 Using config for skill: {args.skill_name}")
+        print(f"   Path: {skill_path}")
+        print(f"   ID: {skill_id}")
+
+    elif args.skill_path and args.skill_id:
+        # Legacy mode - use explicit arguments
+        skill_path = Path(args.skill_path)
+        skill_id = args.skill_id
+        print(f"⚠️  Using legacy mode with explicit path and ID")
+
+    else:
+        print(f"❌ Error: Must provide either --skill-name OR both --skill-path and --skill-id")
+        parser.print_help()
+        sys.exit(1)
+
+    # Validate skill path exists
     if not skill_path.exists():
         print(f"❌ Error: Skill path '{skill_path}' does not exist")
         sys.exit(1)
-    
+
     output_dir = Path(args.output_dir)
-    
+
     # Create deployment package
     try:
         zip_path = create_deployment_package(
             skill_path=skill_path,
-            skill_id=args.skill_id,
+            skill_id=skill_id,
             version=args.version,
             output_dir=output_dir
         )
-        
+
         print(f"\n🚀 Ready for manual upload!")
         print(f"   1. Download: {zip_path}")
         print(f"   2. Go to: https://console.anthropic.com/skills")
-        print(f"   3. Find skill: {args.skill_id}")
+        print(f"   3. Find skill: {skill_id}")
         print(f"   4. Upload new version")
-        
+
     except Exception as e:
         print(f"❌ Error creating deployment package: {e}")
         sys.exit(1)
