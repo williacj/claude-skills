@@ -315,14 +315,24 @@ skills/your-skill/
 - **Commit** skill changes separately from config changes
 - **Tag** releases for important versions
 
-## Future Enhancements
+## Upload Automation
 
-When the Skills API supports programmatic uploads:
+The upload automation is now available! After building packages, you can automatically upload them to Claude Console via the API:
 
-1. Replace build workflow with upload workflow
-2. Update [scripts/upload-skill.py](../scripts/upload-skill.py) to use `--skill-name`
-3. Automate full deploy without manual Console uploads
-4. See [docs/UPLOAD_AUTOMATION.md](./UPLOAD_AUTOMATION.md) for upload automation roadmap
+**See [UPLOAD_AUTOMATION.md](./UPLOAD_AUTOMATION.md) for complete upload documentation.**
+
+**Quick start:**
+```bash
+# Upload all skills
+python3 scripts/upload-all-skills.py --version v1.0.0
+
+# Upload single skill
+python3 scripts/upload-skill.py --skill-name grammar --version v1.0.0
+```
+
+**Requirements:**
+- `ANTHROPIC_API_KEY` environment variable
+- Skills must have `skill_id` configured in [skills-config.json](../skills-config.json)
 
 ## Files Reference
 
@@ -332,8 +342,11 @@ When the Skills API supports programmatic uploads:
 | [scripts/validate-skill.py](../scripts/validate-skill.py) | Validation script |
 | [scripts/build-all-skills.py](../scripts/build-all-skills.py) | Build all skills at once |
 | [scripts/prepare-skill.py](../scripts/prepare-skill.py) | Build single skill |
-| [.github/workflows/build-skills.yml](../.github/workflows/build-skills.yml) | CI/CD workflow |
-| [scripts/upload-skill.py](../scripts/upload-skill.py) | Upload script (for future automation) |
+| [scripts/upload-all-skills.py](../scripts/upload-all-skills.py) | Upload all skills at once |
+| [scripts/upload-skill.py](../scripts/upload-skill.py) | Upload single skill |
+| [.github/workflows/build-skills.yml](../.github/workflows/build-skills.yml) | CI/CD build workflow |
+| [.github/workflows/upload-skills.yml](../.github/workflows/upload-skills.yml) | CI/CD upload workflow |
+| [docs/UPLOAD_AUTOMATION.md](./UPLOAD_AUTOMATION.md) | Upload automation documentation |
 
 ## Getting Help
 

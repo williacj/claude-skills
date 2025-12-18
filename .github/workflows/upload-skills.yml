@@ -1,4 +1,4 @@
-name: Upload Skills to Anthropic
+name: Upload Skills to Claude Console
 
 on:
   push:
@@ -8,6 +8,8 @@ on:
       - 'skills/**'
       - 'skills-config.json'
       - '.github/workflows/upload-skills.yml'
+      - 'scripts/upload-skill.py'
+      - 'scripts/validate-skill.py'
 
   workflow_dispatch:
     inputs:
@@ -18,16 +20,53 @@ on:
         type: string
 
 jobs:
+  validate:
+    name: Validate Skills
+    runs-on: ubuntu-latest
+    outputs:
+      validation_passed: ${{ steps.validate.outputs.passed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate all skills
+        id: validate
+        run: |
+          echo "## 🔍 Skill Validation" >> $GITHUB_STEP_SUMMARY
+          python3 scripts/validate-skill.py --all --verbose > validation.log 2>&1 || true
+          cat validation.log
+          cat validation.log >> $GITHUB_STEP_SUMMARY
+
+          # Check if validation passed
+          if python3 scripts/validate-skill.py --all; then
+            echo "passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
   detect-changes:
     name: Detect Changed Skills
+    needs: validate
     runs-on: ubuntu-latest
     outputs:
       changed_skills: ${{ steps.detect.outputs.changed_skills }}
-      all_skills: ${{ steps.detect.outputs.all_skills }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "v0.0.0-$(git rev-parse --short HEAD)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -76,17 +115,34 @@ jobs:
                   if any(f.startswith(skill_path) for f in changed_files):
                       changed_skills.append(skill_name)
 
-              # Also trigger all if config changed
-              if 'skills-config.json' in changed_files:
-                  print("⚠️  Config changed - uploading all skills")
+              # Also trigger all if config or upload scripts changed
+              trigger_all_files = [
+                  'skills-config.json',
+                  '.github/workflows/upload-skills.yml',
+                  'scripts/upload-skill.py',
+                  'scripts/validate-skill.py'
+              ]
+              if any(f in changed_files for f in trigger_all_files):
+                  print("⚠️  Upload infrastructure changed - uploading all skills")
                   changed_skills = all_skills
+
+          # Remove duplicates while preserving order
+          changed_skills = list(dict.fromkeys(changed_skills))
+
+          # Filter out skills without IDs (can't upload those)
+          uploadable_skills = []
+          for skill_name in changed_skills:
+              skill_id = config['skills'][skill_name].get('skill_id')
+              if skill_id is None:
+                  print(f"⏭️  Skipping {skill_name} - no skill_id configured")
+              else:
+                  uploadable_skills.append(skill_name)
 
           # Output for GitHub Actions
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
-              f.write(f"changed_skills={json.dumps(changed_skills)}\n")
-              f.write(f"all_skills={json.dumps(all_skills)}\n")
+              f.write(f"changed_skills={json.dumps(uploadable_skills)}\n")
 
-          print(f"📦 Changed skills: {changed_skills}")
+          print(f"📦 Skills to upload: {uploadable_skills}")
           EOF
 
       - name: Summary
@@ -94,11 +150,12 @@ jobs:
           echo "## 🔍 Change Detection Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Changed Skills:** \`${{ steps.detect.outputs.changed_skills }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Skills to Upload:** \`${{ steps.detect.outputs.changed_skills }}\`" >> $GITHUB_STEP_SUMMARY
 
   upload-skills:
-    name: Upload Skills
-    needs: detect-changes
+    name: Upload ${{ matrix.skill }}
+    needs: [validate, detect-changes]
     if: needs.detect-changes.outputs.changed_skills != '[]'
     runs-on: ubuntu-latest
     strategy:
@@ -121,13 +178,17 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          echo "🚀 Uploading skill: ${{ matrix.skill }}"
-          python scripts/upload-skill.py --skill-name ${{ matrix.skill }}
+          VERSION="${{ needs.detect-changes.outputs.version }}"
+          echo "🚀 Uploading skill: ${{ matrix.skill }} (version: $VERSION)"
+
+          python3 scripts/upload-skill.py \
+            --skill-name ${{ matrix.skill }} \
+            --version $VERSION
 
       - name: Add to summary
         if: success()
         run: |
-          echo "✅ **${{ matrix.skill }}** uploaded successfully" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **${{ matrix.skill }}** uploaded successfully (version: ${{ needs.detect-changes.outputs.version }})" >> $GITHUB_STEP_SUMMARY
 
       - name: Add failure to summary
         if: failure()
@@ -136,30 +197,54 @@ jobs:
 
   summary:
     name: Upload Summary
-    needs: [detect-changes, upload-skills]
+    needs: [validate, detect-changes, upload-skills]
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Create summary
         run: |
           echo "# 🎯 Skills Upload Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** \`${{ needs.detect-changes.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.upload-skills.result }}" == "success" ]; then
-            echo "✅ All skills uploaded successfully!" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ needs.validate.outputs.validation_passed }}" != "true" ]; then
+            echo "❌ Validation failed - uploads cancelled" >> $GITHUB_STEP_SUMMARY
+          elif [ "${{ needs.upload-skills.result }}" == "success" ]; then
+            echo "✅ All skills uploaded successfully to Claude Console!" >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.upload-skills.result }}" == "failure" ]; then
             echo "❌ Some skills failed to upload. Check job logs above." >> $GITHUB_STEP_SUMMARY
           elif [ "${{ needs.detect-changes.outputs.changed_skills }}" == "[]" ]; then
-            echo "⏭️  No skills changed - nothing to upload" >> $GITHUB_STEP_SUMMARY
+            echo "⏭️  No uploadable skills changed - nothing to upload" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "_Note: Skills without skill_id configured are automatically skipped_" >> $GITHUB_STEP_SUMMARY
           else
             echo "⚠️  Upload status: ${{ needs.upload-skills.result }}" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### 📚 Skills Tracked" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          echo '${{ needs.detect-changes.outputs.all_skills }}' >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "### 📚 All Skills Status" >> $GITHUB_STEP_SUMMARY
+          python3 << 'EOF'
+          import json
+          with open('skills-config.json', 'r') as f:
+              config = json.load(f)
+
+          print("| Skill | Skill ID | Status |")
+          print("|-------|----------|--------|")
+          for name, cfg in config['skills'].items():
+              skill_id = cfg.get('skill_id', 'Not configured')
+              if skill_id and skill_id.startswith('skill_'):
+                  status = "✅ Configured"
+              else:
+                  status = "⚠️  No ID (upload skipped)"
+              print(f"| {name} | `{skill_id}` | {status} |")
+          EOF
