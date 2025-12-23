@@ -11,12 +11,12 @@
       "path": "skills/sermon-writer"
     },
     "biblical-accuracy": {
-      "skill_id": null,
+      "skill_id": "skill_01WcmEEPG76vdpnctdjFQup8",
       "display_title": "Biblical Accuracy Checker",
       "path": "skills/biblical accuracy skill"
     },
     "critical-biblical-listener": {
-      "skill_id": null,
+      "skill_id": "skill_01RbadMrXzzEcKY4r7DMqJsy",
       "display_title": "Critical Biblical Listener",
       "path": "skills/critical-biblical-listener"
     }
@@ -24,6 +24,6 @@
   "metadata": {
     "version": "1.0.0",
     "description": "Configuration for Claude Skills CI/CD pipeline",
-    "last_updated": "2025-11-13"
+    "last_updated": "2025-12-22"
   }
 }
