@@ -13,9 +13,9 @@ Usage:
 import os
 import sys
 import argparse
-import base64
 import json
 import zipfile
+import tempfile
 from pathlib import Path
 from anthropic import Anthropic
 from dotenv import load_dotenv
@@ -44,41 +44,6 @@ def load_skills_config(config_path: Path = None) -> dict:
     with open(config_path, 'r') as f:
         return json.load(f)
 
-def create_skill_zip(skill_path: Path) -> bytes:
-    """
-    Create a zip archive of the skill folder.
-    
-    Args:
-        skill_path: Path to skill folder containing SKILL.md and references/
-    
-    Returns:
-        Base64 encoded zip bytes
-    """
-    import io
-    
-    print(f"📦 Creating zip archive of {skill_path}")
-    
-    # Verify SKILL.md exists
-    skill_md = skill_path / "SKILL.md"
-    if not skill_md.exists():
-        raise FileNotFoundError(f"SKILL.md not found in {skill_path}")
-    
-    zip_buffer = io.BytesIO()
-    
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for file_path in skill_path.rglob('*'):
-            if file_path.is_file() and not file_path.name.startswith('.'):
-                arcname = file_path.relative_to(skill_path)
-                print(f"   Adding: {arcname}")
-                zip_file.write(file_path, arcname)
-    
-    zip_buffer.seek(0)
-    encoded = base64.b64encode(zip_buffer.read()).decode('utf-8')
-    print(f"✅ Zip created ({len(encoded)} bytes)")
-    
-    return encoded
-
-
 def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key: str):
     """
     Upload a new version of a skill to Anthropic.
@@ -96,15 +61,43 @@ def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key:
     print(f"   Version: {version}")
     print(f"   Path: {skill_path}")
     
-    # Create zip
-    skill_zip = create_skill_zip(skill_path)
+    # Create temporary zip file
+    with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_zip:
+        temp_zip_path = temp_zip.name
+        
+        print(f"📦 Creating zip archive at {temp_zip_path}")
+        
+        # Verify SKILL.md exists
+        skill_md = skill_path / "SKILL.md"
+        if not skill_md.exists():
+            raise FileNotFoundError(f"SKILL.md not found in {skill_path}")
+        
+        # Create zip file with all content inside a top-level folder
+        # The API requires: skill-name/SKILL.md, skill-name/references/...
+        skill_name = skill_path.name
+        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for file_path in skill_path.rglob('*'):
+                if file_path.is_file() and not file_path.name.startswith('.'):
+                    # Add files with skill name as top-level folder
+                    arcname = Path(skill_name) / file_path.relative_to(skill_path)
+                    print(f"   Adding: {arcname}")
+                    zip_file.write(file_path, arcname)
+        
+        zip_size = os.path.getsize(temp_zip_path)
+        print(f"✅ Zip created ({zip_size} bytes)")
     
     try:
-        # Upload skill version
-        # Using the correct API structure discovered from exploration
+        # Upload skill version using file path
+        # httpx FileTypes format: (filename, file_object, content_type)
+        with open(temp_zip_path, 'rb') as f:
+            file_content = f.read()
+            
+        # Create file tuple in httpx format
+        file_upload = ('skill.zip', file_content, 'application/zip')
+        
         response = client.beta.skills.versions.create(
             skill_id=skill_id,
-            files=skill_zip,
+            files=[file_upload],
             betas=["code-execution-2025-08-25", "skills-2025-10-02"]
         )
         
@@ -117,7 +110,12 @@ def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key:
         
     except Exception as e:
         print(f"\n❌ Upload failed: {e}")
-        sys.exit(1)
+        raise
+    finally:
+        # Clean up temp file
+        if os.path.exists(temp_zip_path):
+            os.unlink(temp_zip_path)
+            print(f"🧹 Cleaned up temp file")
 
 
 def main():
