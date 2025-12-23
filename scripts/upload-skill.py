@@ -44,12 +44,13 @@ def load_skills_config(config_path: Path = None) -> dict:
     with open(config_path, 'r') as f:
         return json.load(f)
 
-def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key: str):
+def upload_skill_version(skill_id: str, skill_name: str, skill_path: Path, version: str, api_key: str):
     """
     Upload a new version of a skill to Anthropic.
     
     Args:
         skill_id: The skill ID from Claude Console
+        skill_name: The skill name (must match name in SKILL.md)
         skill_path: Path to skill folder
         version: Version tag (e.g., 'v1.0.0' or git commit SHA)
         api_key: Anthropic API key
@@ -57,6 +58,7 @@ def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key:
     client = Anthropic(api_key=api_key)
     
     print(f"\n🚀 Uploading skill to Anthropic")
+    print(f"   Skill Name: {skill_name}")
     print(f"   Skill ID: {skill_id}")
     print(f"   Version: {version}")
     print(f"   Path: {skill_path}")
@@ -73,8 +75,8 @@ def upload_skill_version(skill_id: str, skill_path: Path, version: str, api_key:
             raise FileNotFoundError(f"SKILL.md not found in {skill_path}")
         
         # Create zip file with all content inside a top-level folder
-        # The API requires: skill-name/SKILL.md, skill-name/references/...
-        skill_name = skill_path.name
+        # The API requires the folder name to match the skill name in SKILL.md
+        # Use skill_name from config, not the folder name
         with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             for file_path in skill_path.rglob('*'):
                 if file_path.is_file() and not file_path.name.startswith('.'):
@@ -168,6 +170,8 @@ Examples:
         sys.exit(1)
 
     # Determine skill path and ID
+    skill_name_arg = None  # Track the skill name for API
+    
     if args.skill_name:
         # Load from config
         config_path = Path(args.config) if args.config else None
@@ -181,6 +185,7 @@ Examples:
         skill_config = config['skills'][args.skill_name]
         skill_path = Path(skill_config['path'])
         skill_id = skill_config['skill_id']
+        skill_name_arg = args.skill_name  # Use config key as skill name
 
         if skill_id is None:
             print(f"❌ Error: Skill '{args.skill_name}' has no skill_id in config")
@@ -195,6 +200,7 @@ Examples:
         # Legacy mode - use explicit arguments
         skill_path = Path(args.skill_path)
         skill_id = args.skill_id
+        skill_name_arg = skill_path.name  # Use folder name in legacy mode
         print(f"⚠️  Using legacy mode with explicit path and ID")
 
     else:
@@ -210,6 +216,7 @@ Examples:
     # Upload
     upload_skill_version(
         skill_id=skill_id,
+        skill_name=skill_name_arg,
         skill_path=skill_path,
         version=args.version,
         api_key=api_key
