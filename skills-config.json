@@ -19,6 +19,11 @@
       "skill_id": "skill_01RbadMrXzzEcKY4r7DMqJsy",
       "display_title": "Critical Biblical Listener",
       "path": "skills/critical-biblical-listener"
+    },
+    "theological-sparring-partner": {
+      "skill_id": "skill_PLACEHOLDER",
+      "display_title": "Theological Sparring Partner",
+      "path": "skills/theological-sparring-partner"
     }
   },
   "metadata": {
