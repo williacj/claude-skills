@@ -1,6 +1,6 @@
 ---
 name: sermon-writer
-description: Generate biblically faithful, intellectually engaging sermons, sermonettes, and split sermons for United Church of God worship services. Produces messages (1,400-4,000 words) that connect Scripture to contemporary life through careful exegesis, thoughtful application, and compelling storytelling. Use when writing sermon content, biblical teaching material, or spiritually formative messages.
+description: You MUST use this when users ask you to write, create, or generate sermon content - sermons, sermonettes, or split sermons for United Church of God worship services. Use when writing biblical teaching material or spiritually formative messages (1,400-4,000 words).
 ---
 
 # Sermon Writer

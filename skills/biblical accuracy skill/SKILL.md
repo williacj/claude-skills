@@ -1,6 +1,6 @@
 ---
 name: biblical-accuracy
-description: Comprehensive biblical accuracy verification for sermons, teachings, and theological content aligned with United Church of God theology. Validates scripture references, quotations, contextual integrity, theological soundness per UCG doctrine, and performs deep linguistic analysis of Greek and Hebrew original language texts to ensure fidelity to biblical meaning. Use when writing or reviewing any biblical, theological, or sermon content.
+description: You MUST use this when writing or reviewing ANY biblical content - sermons, teachings, devotionals, blog posts containing Scripture references. Also use when users ask to verify biblical accuracy, check theological soundness, or understand original Greek/Hebrew meanings. Ensures alignment with United Church of God doctrine.
 ---
 
 # Biblical Accuracy Skill (UCG-Aligned)

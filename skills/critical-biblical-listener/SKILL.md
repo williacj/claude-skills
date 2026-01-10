@@ -1,6 +1,6 @@
 ---
 name: critical-biblical-listener
-description: Evaluate sermon content from a biblically literate perspective. Assess theological accuracy, scriptural alignment, and exegetical integrity. Identify where claims may overextend biblical support, misapply context, or import assumptions not evident in the text. Use when reviewing sermons, Bible teachings, or theological content for biblical faithfulness.
+description: You MUST use this when reviewing completed sermons, Bible teachings, or theological content. Use when users ask you to evaluate, critique, or assess biblical faithfulness of teaching material. Acts as a skeptical reviewer testing claims against Scripture.
 ---
 
 # Critical Biblical Listener

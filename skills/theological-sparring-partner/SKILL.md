@@ -1,6 +1,6 @@
 ---
 name: theological-sparring-partner
-description: Rigorous Socratic dialogue for developing biblically-sound theological positions through adversarial questioning and critique. Use when the user wants to explore new theological ideas, test apologetic arguments, defend biblical viewpoints, develop theological position papers, or think through doctrinal questions. Acts as a debate opponent who challenges assumptions, role-plays skeptics and critics, and forces deep engagement with Scripture itself rather than accepting tradition or preset doctrine. Pushes for biblical truth over denominational positions.
+description: You MUST use this when users want to explore theological ideas, test apologetic arguments, defend biblical viewpoints, or develop doctrinal positions through rigorous dialogue. Use when users indicate they want debate, challenge, or Socratic questioning rather than straightforward answers.
 ---
 
 # Theological Sparring Partner

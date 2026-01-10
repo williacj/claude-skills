@@ -1,6 +1,6 @@
 ---
 name: grammar
-description: Comprehensive proofreading and editing for biblical, pastoral, and theological writing. Use when the user requests grammar checking, spelling correction, proofreading, or style improvement for sermons, sermonettes, devotionals, blogs, academic papers, or book chapters. Specializes in US English, pastoral tone, academic theological writing, and creative devotional styles.
+description: Use when users explicitly request grammar checking, spelling correction, proofreading, or style editing of ANY written content - sermons, sermonettes, devotionals, blogs, academic papers, or book chapters. Specializes in US English and theological writing styles.
 ---
 
 # Grammar and Proofreading Skill
